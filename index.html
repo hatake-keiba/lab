@@ -195,7 +195,7 @@ section{display:none}section.on{display:block}
 <div class="wrap">
   <div class="hd">
     <div class="wm"><i><svg class="ic" style="stroke:none"><use href="#i-face"/></svg></i><div>HATAKE<small>RACE COLLECTION</small></div></div>
-    <div class="dt"><b id="dt"></b>UPD 09/06 18:42<br><span class="mem" id="mem"></span></div>
+    <div class="dt"><b id="dt"></b>UPD 09/06 18:49<br><span class="mem" id="mem"></span></div>
   </div>
   <section id="s-home" class="on"></section>
   <section id="s-baba"></section>
@@ -460,55 +460,54 @@ function renderRec(){ $('#s-rec').innerHTML=back()+`<h2>${ico('trophy')}実績</
 /* ===== 起動 ===== */
 (async function(){ if(!PAID){ renderAll(); return; } let pw=null; try{pw=localStorage.getItem(LSK);}catch(e){} if(pw){ if(!(await tryUnlock(pw,false))) renderAll(); } else renderAll(); })();
 window.addEventListener('resize',()=>{ if(S&&$('#cv')){ setupCanvas(); draw(); } });
-/* ===== 3Dトラック(Three.js) 線画モード: 白地に黒の輪郭線、馬番だけ枠色 ===== */
+/* ===== 3Dトラック(Three.js) アイソメ線画モード: 平行投影・黒輪郭・スクリーントーン、馬番だけ枠色 ===== */
 let T=null;
 const INK=0x111111;
+function hatchTex(){ const c=document.createElement('canvas'); c.width=c.height=64; const x=c.getContext('2d'); x.fillStyle='#f4f4f0'; x.fillRect(0,0,64,64); x.strokeStyle='#9a9a95'; x.lineWidth=1.2; for(let i=-64;i<128;i+=8){ x.beginPath(); x.moveTo(i,64); x.lineTo(i+64,0); x.stroke(); } const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; return t; }
 function setupCanvas(){ const cv=$('#cv'); if(!cv||!window.THREE) return; const w=cv.parentElement.clientWidth||500, h=Math.round(w*0.66);
   if(!T||T.cv!==cv){ if(T&&T.renderer){ try{T.renderer.dispose();}catch(e){} cancelAnimationFrame(T.anim); }
     const renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true,alpha:true}); renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1)); renderer.setClearColor(0x000000,0);
-    T={cv,renderer,scene:new THREE.Scene(),camera:new THREE.PerspectiveCamera(30,w/h,1,30000),az:0.62,pol:0.95,dist:1,target:new THREE.Vector3(0,0,0),horses:[],labels:[],follow:false,anim:0};
-    T.scene.add(new THREE.HemisphereLight(0xffffff,0xdddddd,1.0));
+    T={cv,renderer,scene:new THREE.Scene(),camera:new THREE.OrthographicCamera(-w/2,w/2,h/2,-h/2,-8000,8000),az:Math.PI/4+0.25,pol:0.955,zoom:1,fitZoom:1,target:new THREE.Vector3(0,0,0),horses:[],labels:[],follow:false,anim:0,hatch:hatchTex()};
     buildTrack3D(); bindOrbit(); T.anim=requestAnimationFrame(loop3D); }
-  T.renderer.setSize(w,h,false); cv.style.height=h+'px'; T.camera.aspect=w/h; T.camera.updateProjectionMatrix(); T.w=w; T.h=h; fitCamera(); }
+  T.renderer.setSize(w,h,false); cv.style.height=h+'px'; const cam=T.camera; cam.left=-w/2; cam.right=w/2; cam.top=h/2; cam.bottom=-h/2; cam.updateProjectionMatrix(); T.w=w; T.h=h; fitCamera(); }
 function normalAt(g,s){ const p=g.pos(s),p2=g.pos(s+1),nx=-(p2[1]-p[1]),ny=(p2[0]-p[0]),nl=Math.hypot(nx,ny)||1; return [nx/nl*g.sgn,ny/nl*g.sgn,(p2[0]-p[0])/nl,(p2[1]-p[1])/nl]; }
-function bandMesh(g,off,W,hFn,color,depth){ const N=240,pos=[],idx=[]; for(let i=0;i<=N;i++){ const s=i/N*g.C,p=g.pos(s),n=normalAt(g,s),y=hFn(s);
-    pos.push(p[0]+n[0]*(off+W/2),y,p[1]+n[1]*(off+W/2), p[0]+n[0]*(off-W/2),y,p[1]+n[1]*(off-W/2), p[0]+n[0]*(off+W/2),y-depth,p[1]+n[1]*(off+W/2), p[0]+n[0]*(off-W/2),y-depth,p[1]+n[1]*(off-W/2)); }
-  for(let i=0;i<N;i++){const a=i*4,b=a+4; idx.push(a,b+1,a+1,a,b,b+1, a,a+2,b+2,a,b+2,b, a+1,b+1,b+3,a+1,b+3,a+3);}
-  const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); geo.setIndex(idx); geo.computeVertexNormals();
-  const grp=new THREE.Group(); grp.add(new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1})));
-  // 側面の陰影(薄いグレー)は別メッシュ
-  const side=[],sidx=[]; for(let i=0;i<=N;i++){const s=i/N*g.C,p=g.pos(s),n=normalAt(g,s),y=hFn(s); side.push(p[0]+n[0]*(off+W/2),y,p[1]+n[1]*(off+W/2), p[0]+n[0]*(off+W/2),y-depth,p[1]+n[1]*(off+W/2));}
-  for(let i=0;i<N;i++){const a=i*2,b=a+2; sidx.push(a,b,a+1,a+1,b,b+1);} const sg=new THREE.BufferGeometry(); sg.setAttribute('position',new THREE.Float32BufferAttribute(side,3)); sg.setIndex(sidx);
-  grp.add(new THREE.Mesh(sg,new THREE.MeshBasicMaterial({color:0xe4e4e0,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1})));
+/* 走路の帯: 上面(白/薄灰) + 側面(スクリーントーン) + 輪郭線 */
+function bandMesh(g,off,W,hFn,topColor,depth){ const N=240,grp=new THREE.Group(); const top=[],idx=[]; for(let i=0;i<=N;i++){ const s=i/N*g.C,p=g.pos(s),n=normalAt(g,s),y=hFn(s); top.push(p[0]+n[0]*(off+W/2),y,p[1]+n[1]*(off+W/2), p[0]+n[0]*(off-W/2),y,p[1]+n[1]*(off-W/2)); }
+  for(let i=0;i<N;i++){const a=i*2,b=a+2; idx.push(a,b+1,a+1,a,b,b+1);} const tg=new THREE.BufferGeometry(); tg.setAttribute('position',new THREE.Float32BufferAttribute(top,3)); tg.setIndex(idx);
+  grp.add(new THREE.Mesh(tg,new THREE.MeshBasicMaterial({color:topColor,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:2,polygonOffsetUnits:2})));
+  [[off+W/2,1],[off-W/2,-1]].forEach(([o,sg])=>{ const side=[],uv=[],sidx=[]; for(let i=0;i<=N;i++){const s=i/N*g.C,p=g.pos(s),n=normalAt(g,s),y=hFn(s); side.push(p[0]+n[0]*o,y,p[1]+n[1]*o, p[0]+n[0]*o,y-depth,p[1]+n[1]*o); const u=i/N*(g.C/18); uv.push(u,1,u,0);} for(let i=0;i<N;i++){const a=i*2,b=a+2; sidx.push(a,b,a+1,a+1,b,b+1);} const sg2=new THREE.BufferGeometry(); sg2.setAttribute('position',new THREE.Float32BufferAttribute(side,3)); sg2.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2)); sg2.setIndex(sidx);
+    grp.add(new THREE.Mesh(sg2,new THREE.MeshBasicMaterial({map:T.hatch,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:2,polygonOffsetUnits:2}))); });
   return grp; }
 function outline(g,off,hFn,lift,color,dash){ const N=240,pts=[]; for(let i=0;i<=N;i++){const s=i/N*g.C,p=g.pos(s),n=normalAt(g,s); pts.push(new THREE.Vector3(p[0]+n[0]*off,hFn(s)+lift,p[1]+n[1]*off));}
-  const geo=new THREE.BufferGeometry().setFromPoints(pts); if(dash){ const l=new THREE.Line(geo,new THREE.LineDashedMaterial({color,dashSize:6,gapSize:5})); l.computeLineDistances(); return l; } return new THREE.Line(geo,new THREE.LineBasicMaterial({color})); }
+  const geo=new THREE.BufferGeometry().setFromPoints(pts); if(dash){ const l=new THREE.Line(geo,new THREE.LineDashedMaterial({color,dashSize:7,gapSize:6})); l.computeLineDistances(); return l; } return new THREE.Line(geo,new THREE.LineBasicMaterial({color})); }
 function crossLine(g,s,W,off,h,color){ const p=g.pos(s),n=normalAt(g,s); const a=new THREE.Vector3(p[0]+n[0]*(off+W/2),h,p[1]+n[1]*(off+W/2)),b=new THREE.Vector3(p[0]+n[0]*(off-W/2),h,p[1]+n[1]*(off-W/2)); return new THREE.Line(new THREE.BufferGeometry().setFromPoints([a,b]),new THREE.LineBasicMaterial({color})); }
 function labelSprite(text,fg,bg,scale,border){ const c=document.createElement('canvas'); c.width=256;c.height=128; const x=c.getContext('2d'); x.font='500 58px "DM Mono","Zen Kaku Gothic New",monospace'; const tw=Math.min(240,x.measureText(text).width+60);
   x.fillStyle=bg; x.strokeStyle=border||'#111'; x.lineWidth=5; x.beginPath(); if(x.roundRect) x.roundRect((256-tw)/2,22,tw,84,42); else x.rect((256-tw)/2,22,tw,84); x.fill(); x.stroke(); x.fillStyle=fg; x.textAlign='center'; x.textBaseline='middle'; x.fillText(text,128,66);
   const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false,transparent:true})); sp.scale.set(scale*2,scale,1); sp.renderOrder=5; sp.userData.base=scale; if(T) T.labels.push(sp); return sp; }
+function lineSprite(draw,scale){ const c=document.createElement('canvas'); c.width=c.height=128; const x=c.getContext('2d'); x.lineWidth=5; x.strokeStyle='#111'; x.lineCap='round'; x.lineJoin='round'; x.fillStyle='#fff'; draw(x); const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthTest:false})); sp.scale.set(scale,scale,1); sp.userData.base=scale; sp.renderOrder=4; if(T) T.labels.push(sp); return sp; }
+const drawTree=x=>{ x.beginPath(); x.moveTo(64,118); x.lineTo(64,80); x.stroke(); x.beginPath(); x.arc(64,58,34,0,Math.PI*2); x.fill(); x.stroke(); x.beginPath(); x.arc(46,66,16,0,Math.PI*2); x.fill(); x.stroke(); };
+const drawFlag=x=>{ x.beginPath(); x.moveTo(50,120); x.lineTo(50,14); x.stroke(); x.beginPath(); x.moveTo(50,18); x.lineTo(98,30); x.lineTo(50,44); x.closePath(); x.fill(); x.stroke(); };
 function horseNode(h){ const grp=new THREE.Group();
   const puck=new THREE.Mesh(new THREE.CylinderGeometry(4,4,2,18),new THREE.MeshBasicMaterial({color:WBG[h.waku]||'#999'})); puck.position.y=1; grp.add(puck);
-  grp.add(new THREE.LineSegments(new THREE.EdgesGeometry(puck.geometry,60),new THREE.LineBasicMaterial({color:INK})).translateY(1));
+  const e=new THREE.LineSegments(new THREE.EdgesGeometry(puck.geometry,60),new THREE.LineBasicMaterial({color:INK})); e.position.y=1; grp.add(e);
   const c=document.createElement('canvas'); c.width=c.height=128; const x=c.getContext('2d'); x.beginPath(); x.arc(64,64,52,0,Math.PI*2); x.fillStyle=WBG[h.waku]||'#999'; x.fill(); x.lineWidth=7; x.strokeStyle='#111'; x.stroke();
   x.fillStyle=WFG[h.waku]||'#fff'; x.font='700 66px "DM Mono","Zen Kaku Gothic New",sans-serif'; x.textAlign='center'; x.textBaseline='middle'; x.fillText(h.uno,64,68);
   const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthTest:false})); sp.renderOrder=10; sp.position.y=9; grp.add(sp); grp.userData.sp=sp; return grp; }
 function buildTrack3D(){ const g=S.geo, r=S.r, dirt=r.surface==='ダ'; const EX=Math.min(16,40/Math.max(1,g.H)); g.EX=EX; const hT=s=>g.elev(s)*EX, hD=s=>g.elev(s)*EX*0.9-1.5;
-  const grp=new THREE.Group(); T.group=grp; const W=g.W, dOff=-(W+12);
-  // 走路: 走る方はうすい色、もう一方は白
-  grp.add(bandMesh(g,0,W,hT, dirt?0xffffff:0xeaf3e3, 8));
-  grp.add(bandMesh(g,dOff,W*0.85,hD, dirt?0xf7efe0:0xffffff, 6));
-  // 輪郭線
-  [[W/2,hT],[-W/2,hT],[dOff+W*0.85/2,hD],[dOff-W*0.85/2,hD]].forEach(([o,f])=>{ grp.add(outline(g,o,f,0.4,INK,false)); grp.add(outline(g,o,s=>f(s)-(o>dOff?8:6),0,0x999999,false)); });
-  // 内馬場(白)
-  const N=140, ipos=[0,-1.5,0], iidx=[]; for(let i=0;i<N;i++){const s=i/N*g.C,p=g.pos(s),n=normalAt(g,s),o=dOff-W*0.85/2-2; ipos.push(p[0]+n[0]*o,-1.5,p[1]+n[1]*o);} for(let i=1;i<=N;i++){iidx.push(0,i%N+1,i);}
+  const grp=new THREE.Group(); T.group=grp; const W=g.W, dOff=-(W+12), DEP=9;
+  grp.add(bandMesh(g,0,W,hT, dirt?0xf1f1ed:0xffffff, DEP));
+  grp.add(bandMesh(g,dOff,W*0.85,hD, dirt?0xffffff:0xf1f1ed, DEP-3));
+  [[W/2,hT,DEP],[-W/2,hT,DEP],[dOff+W*0.85/2,hD,DEP-3],[dOff-W*0.85/2,hD,DEP-3]].forEach(([o,f,d])=>{ grp.add(outline(g,o,f,0.3,INK,false)); grp.add(outline(g,o,s=>f(s)-d,0,INK,false)); });
+  // 内馬場(白) + 木
+  const N=140, ipos=[0,-1.2,0], iidx=[]; for(let i=0;i<N;i++){const s=i/N*g.C,p=g.pos(s),n=normalAt(g,s),o=dOff-W*0.85/2-2; ipos.push(p[0]+n[0]*o,-1.2,p[1]+n[1]*o);} for(let i=1;i<=N;i++){iidx.push(0,i%N+1,i);}
   const ig=new THREE.BufferGeometry(); ig.setAttribute('position',new THREE.Float32BufferAttribute(ipos,3)); ig.setIndex(iidx); grp.add(new THREE.Mesh(ig,new THREE.MeshBasicMaterial({color:0xffffff,side:THREE.DoubleSide})));
-  // 走る走路の中心に点線(EMONO風)
-  const railOff=dirt?dOff:0, railW=dirt?W*0.85:W, hR=dirt?hD:hT; grp.add(outline(g,railOff,hR,0.5,0x777777,true));
-  // スタンド(線画の箱)
+  [[-0.3,0.35],[0.25,-0.3],[0.05,0.15],[-0.15,-0.2],[0.35,0.25]].forEach(([fx,fz],i)=>{ const t=lineSprite(drawTree,34+(i%2)*8); t.position.set(fx*(g.L+g.rad)*0.6, 10, fz*g.rad*0.8); grp.add(t); });
+  const railOff=dirt?dOff:0, railW=dirt?W*0.85:W, hR=dirt?hD:hT; grp.add(outline(g,railOff,hR,0.4,0x777777,true));
+  // スタンド(線画の箱 + トーン屋根)
   const stz=g.rad+W/2+26, st=new THREE.Mesh(new THREE.BoxGeometry(g.L*0.9,10,16),new THREE.MeshBasicMaterial({color:0xffffff})); st.position.set(0,hT(0)+5,stz); grp.add(st); const se=new THREE.LineSegments(new THREE.EdgesGeometry(st.geometry),new THREE.LineBasicMaterial({color:INK})); se.position.copy(st.position); grp.add(se);
-  const roof=new THREE.Mesh(new THREE.BoxGeometry(g.L*0.9+6,1.2,22),new THREE.MeshBasicMaterial({color:0xf2f2ee})); roof.position.set(0,hT(0)+11,stz-1); grp.add(roof); const re=new THREE.LineSegments(new THREE.EdgesGeometry(roof.geometry),new THREE.LineBasicMaterial({color:INK})); re.position.copy(roof.position); grp.add(re);
-  // ハロン棒(短い線) / ゴール / 頂上 / スタート
+  const roof=new THREE.Mesh(new THREE.BoxGeometry(g.L*0.9+6,1.2,22),new THREE.MeshBasicMaterial({map:T.hatch})); roof.position.set(0,hT(0)+11,stz-1); grp.add(roof); const re=new THREE.LineSegments(new THREE.EdgesGeometry(roof.geometry),new THREE.LineBasicMaterial({color:INK})); re.position.copy(roof.position); grp.add(re);
+  const fl=lineSprite(drawFlag,28); fl.position.set(-g.L*0.42,hT(0)+22,stz-1); grp.add(fl);
+  // ハロン棒 / ゴール / 頂上 / スタート
   for(let s=200;s<g.C-50;s+=200){ grp.add(crossLine(g,s,railW,railOff,hR(s)+.5,0xbbbbbb)); }
   grp.add(crossLine(g,0,railW+6,railOff,hR(0)+.6,INK)); const gp=g.pos(0),gn=normalAt(g,0);
   const gl=labelSprite('GOAL','#fff','#111',16,'#111'); gl.position.set(gp[0]+gn[0]*(railOff+railW/2+6),hR(0)+18,gp[1]+gn[1]*(railOff+railW/2+6)); grp.add(gl);
@@ -519,21 +518,22 @@ function buildTrack3D(){ const g=S.geo, r=S.r, dirt=r.surface==='ダ'; const EX=
 function horsePos(i,gapx){ const g=S.geo,h=S.r.runners[i]; let s,lane; if(!S.tracks){ s=g.s0-(h.uno-1)*3.2*gapx; lane=((h.waku||4)-1)/7; } else { s=g.s0+Math.max(0,S.tracks.lead(S.t)-S.tracks.gap(i,S.t)*gapx); lane=S.tracks.lane(i,S.t); } return {s,lane}; }
 function placeHorses(){ if(!T||!S||!T.horses.length) return; const g=S.geo,gapx=T.follow?2.6:5.5;
   T.horses.forEach((q,i)=>{ const {s,lane}=horsePos(i,gapx), p=g.pos(s),n=normalAt(g,s),off=T.railOff+(lane-0.5)*T.railW*0.9; q.position.set(p[0]+n[0]*off,T.hR(s),p[1]+n[1]*off); }); drawFormation(); }
-function fitCamera(){ if(!T||!S) return; const g=S.geo,cam=T.camera; const w=g.L+2*g.rad+2*g.W+80,d=2*g.rad+2*g.W+120; const vf=cam.fov*Math.PI/180,hf=2*Math.atan(Math.tan(vf/2)*cam.aspect);
-  T.dist=Math.max(w/(2*Math.tan(hf/2)),d*0.9/(2*Math.tan(vf/2)))*1.02; T.target.set(0,6,0); T.pol=0.95; T.az=0.62; T.follow=false; orbitCam(); }
-function orbitCam(){ const cam=T.camera; T.pol=Math.max(0.2,Math.min(1.35,T.pol)); cam.position.set(T.target.x+T.dist*Math.sin(T.pol)*Math.sin(T.az),T.target.y+T.dist*Math.cos(T.pol),T.target.z+T.dist*Math.sin(T.pol)*Math.cos(T.az)); cam.lookAt(T.target); }
-function followCam(){ if(!S.tracks||!S.order) return; const g=S.geo,i=S.order[0],s=g.s0+S.tracks.dist(i,S.t),p=g.pos(s),n=normalAt(g,s),tx=n[2],tz=n[3];
-  const want=new THREE.Vector3(p[0]-tx*64+n[0]*30,T.hR(s)+46,p[1]-tz*64+n[1]*30); T.camera.position.lerp(want,0.12); T.camera.lookAt(new THREE.Vector3(p[0]+tx*30,T.hR(s)-2,p[1]+tz*30)); }
+function camDir(){ return new THREE.Vector3(Math.sin(T.pol)*Math.sin(T.az),Math.cos(T.pol),Math.sin(T.pol)*Math.cos(T.az)); }
+function placeCam(){ const cam=T.camera; cam.position.copy(T.target).add(camDir().multiplyScalar(1500)); cam.lookAt(T.target); cam.zoom=T.zoom; cam.updateProjectionMatrix(); }
+function fitCamera(){ if(!T||!S) return; const g=S.geo,cam=T.camera; T.target.set(0,0,8); T.follow=false; T.zoom=1; placeCam();
+  const X=g.L/2+g.rad+g.W+20, Z=g.rad+g.W+40, Y=60; let mnx=1e9,mxx=-1e9,mny=1e9,mxy=-1e9; [[-X,-Z],[X,-Z],[-X,Z],[X,Z]].forEach(([x,z])=>[0,Y].forEach(y=>{ const v=new THREE.Vector3(x,y,z).project(cam); mnx=Math.min(mnx,v.x);mxx=Math.max(mxx,v.x);mny=Math.min(mny,v.y);mxy=Math.max(mxy,v.y); }));
+  T.zoom=Math.min(2/(mxx-mnx),2/(mxy-mny))*0.97; T.fitZoom=T.zoom; placeCam(); }
+function followCam(){ if(!S.tracks||!S.order) return; const g=S.geo,i=S.order[0],s=g.s0+S.tracks.dist(i,S.t),p=g.pos(s); T.target.lerp(new THREE.Vector3(p[0],T.hR(s),p[1]),0.12); T.zoom+= (T.fitZoom*2.6-T.zoom)*0.1; placeCam(); }
 function loop3D(){ if(!T) return; T.anim=requestAnimationFrame(loop3D); if(!S||!document.getElementById('cv')||!document.getElementById('s-sim').classList.contains('on')) return; placeHorses(); if(T.follow&&S.running) followCam();
-  const k=T.follow?0.9:Math.max(0.6,T.dist/900); T.horses.forEach(q=>q.userData.sp.scale.set(14*k,14*k,1)); T.labels.forEach(sp=>sp.scale.set(sp.userData.base*2*k,sp.userData.base*k,1)); T.renderer.render(T.scene,T.camera); }
+  const k=T.fitZoom/T.zoom*(T.follow?1.7:1); T.horses.forEach(q=>q.userData.sp.scale.set(24*k,24*k,1)); T.labels.forEach(sp=>{ const b=sp.userData.base; if(sp.material.map&&sp.scale.x!==sp.scale.y*2) sp.scale.set(b*k,b*k,1); else sp.scale.set(b*2*k,b*k,1); }); T.renderer.render(T.scene,T.camera); }
 function bindOrbit(){ const cv=T.cv; let lx=0,ly=0,drag=false,pd=0,two=false;
   cv.addEventListener('pointerdown',e=>{if(e.pointerType!=='touch'){drag=true;lx=e.clientX;ly=e.clientY;}});
-  window.addEventListener('pointermove',e=>{if(!drag||!T)return;T.follow=false;T.az-=(e.clientX-lx)*0.008;T.pol-=(e.clientY-ly)*0.006;lx=e.clientX;ly=e.clientY;orbitCam();});
+  window.addEventListener('pointermove',e=>{if(!drag||!T)return;T.follow=false;T.az-=(e.clientX-lx)*0.008;T.pol=Math.max(0.5,Math.min(1.25,T.pol-(e.clientY-ly)*0.005));lx=e.clientX;ly=e.clientY;placeCam();});
   window.addEventListener('pointerup',()=>drag=false);
-  cv.addEventListener('wheel',e=>{e.preventDefault();T.dist*=e.deltaY>0?1.1:0.9;T.follow=false;orbitCam();},{passive:false});
+  cv.addEventListener('wheel',e=>{e.preventDefault();T.zoom*=e.deltaY>0?0.9:1.1;T.follow=false;placeCam();},{passive:false});
   const td=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
   cv.addEventListener('touchstart',e=>{if(e.touches.length===1){two=false;lx=e.touches[0].clientX;ly=e.touches[0].clientY;}else if(e.touches.length===2){two=true;pd=td(e.touches);}},{passive:false});
-  cv.addEventListener('touchmove',e=>{e.preventDefault();T.follow=false;if(e.touches.length===2){const d=td(e.touches);if(pd)T.dist*=pd/d;pd=d;orbitCam();}else if(e.touches.length===1&&!two){const t=e.touches[0];T.az-=(t.clientX-lx)*0.008;T.pol-=(t.clientY-ly)*0.006;lx=t.clientX;ly=t.clientY;orbitCam();}},{passive:false});
+  cv.addEventListener('touchmove',e=>{e.preventDefault();T.follow=false;if(e.touches.length===2){const d=td(e.touches);if(pd)T.zoom*=d/pd;pd=d;placeCam();}else if(e.touches.length===1&&!two){const t=e.touches[0];T.az-=(t.clientX-lx)*0.008;T.pol=Math.max(0.5,Math.min(1.25,T.pol-(t.clientY-ly)*0.005));lx=t.clientX;ly=t.clientY;placeCam();}},{passive:false});
   cv.addEventListener('touchend',e=>{if(e.touches.length===0){two=false;pd=0;}}); }
 /* 隊列ボード(線画): 横=先頭からの差(右が先頭)、縦=内(下)〜外(上) */
 function drawFormation(){ const cv=document.getElementById('fm'); if(!cv||!S) return; const dpr=Math.min(2,window.devicePixelRatio||1), w=cv.parentElement.clientWidth||500, h=100; if(cv.width!==Math.round(w*dpr)){cv.width=Math.round(w*dpr);cv.height=h*dpr;cv.style.height=h+'px';}
